@@ -21,7 +21,7 @@ omarchy plugin add https://github.com/JohnRenatoDev/omarchy-tabela-brasileirao-s
 The repository was renamed from `omarchy-football` to
 `omarchy-tabela-brasileirao-serie-a`. The permanent ID remains
 `russio.football`, preserving existing settings. The installer requests
-consent before adding/enabling the plugin. There is no `sudo` installer or
+consent before adding/enabling the plugin. There is no installer requiring elevated privileges or
 automatic modification of other plugins. Run `omarchy restart shell` if necessary.
 
 ## Usage

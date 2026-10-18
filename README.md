@@ -22,7 +22,7 @@ O repositório foi renomeado de `omarchy-football` para
 `omarchy-tabela-brasileirao-serie-a`. O ID permanente continua
 `russio.football`, preservando configurações existentes.
 O instalador pede consentimento para adicionar/habilitar o plugin. Não há
-instalador com `sudo` nem alteração automática de outros plugins.
+instalador que exija elevação de privilégios nem alteração automática de outros plugins.
 Se necessário, execute `omarchy restart shell`.
 
 ## Uso
