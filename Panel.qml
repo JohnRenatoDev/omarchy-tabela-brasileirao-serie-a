@@ -37,8 +37,9 @@ Panel {
   readonly property bool vertical: bar ? bar.vertical : false
 
   // ---- Settings (inline shell.json entry of russio.football).
-  readonly property string league: String(setting("league", "bra.1"))
-  readonly property string teamId: settingString("team", "")
+  readonly property string league: /^[a-z]{2,8}\.[1-9][0-9]?$/.test(String(setting("league", "bra.1")))
+    ? String(setting("league", "bra.1")) : "bra.1"
+  readonly property string teamId: Model.teamId(settingString("team", ""))
   readonly property string teamName: {
     var v = setting("teamName", "")
     return v === undefined || v === null ? "" : String(v)
@@ -64,6 +65,7 @@ Panel {
   // ---- Popup state.
   property string activeTab: "jogos"
   property string searchText: ""
+  property bool searchFocused: false
 
   // ---- Goal celebration overlay state. One overlay, two moods: "own" is
   //      the full party, "rival" a discreet angry vignette.
@@ -79,6 +81,8 @@ Panel {
   property var todayMatches: []          // parsed events for today
   property var match: null               // the followed team's match
   property var standings: []             // parsed Serie A table rows
+  property bool scoreboardError: false
+  property bool standingsError: false
   property var lastScoreState: null      // previous poll's {id, hs, as, state}
   property date postShownAt: new Date(0) // when the final score first showed
   property date lastStandingsAt: new Date(0)
@@ -130,7 +134,8 @@ Panel {
 
   function refreshScoreboard() {
     if (scoreboardProc.running) return
-    scoreboardProc.command = ["curl", "-fsS", "--connect-timeout", "5", "--max-time", "12",
+    scoreboardProc.command = ["curl", "--disable", "-fsS", "--proto", "=https",
+      "--max-filesize", "2097152", "--connect-timeout", "5", "--max-time", "12", "--",
       "https://site.api.espn.com/apis/site/v2/sports/soccer/" + root.league + "/scoreboard"]
     scoreboardProc.running = true
   }
@@ -150,7 +155,8 @@ Panel {
 
   function refreshStandings() {
     if (standingsProc.running) return
-    standingsProc.command = ["curl", "-fsS", "--connect-timeout", "5", "--max-time", "12",
+    standingsProc.command = ["curl", "--disable", "-fsS", "--proto", "=https",
+      "--max-filesize", "2097152", "--connect-timeout", "5", "--max-time", "12", "--",
       "https://site.api.espn.com/apis/v2/sports/soccer/" + root.league + "/standings"]
     standingsProc.running = true
   }
@@ -185,16 +191,24 @@ Panel {
   Process {
     id: scoreboardProc
     stdout: StdioCollector {
+      id: scoreboardOutput
       waitForEnd: true
-      onStreamFinished: root.applyScoreboard(text)
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.applyScoreboard(scoreboardOutput.text)
+      else root.scoreboardError = true
     }
   }
 
   Process {
     id: standingsProc
     stdout: StdioCollector {
+      id: standingsOutput
       waitForEnd: true
-      onStreamFinished: root.applyStandings(text)
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.applyStandings(standingsOutput.text)
+      else root.standingsError = true
     }
   }
 
@@ -212,10 +226,14 @@ Panel {
 
   function applyScoreboard(raw) {
     var events = []
-    try { events = Model.parseScoreboard(JSON.parse(raw)) } catch (e) { events = [] }
+    try { events = Model.parseScoreboard(JSON.parse(raw)) } catch (e) {
+      root.scoreboardError = true
+      return
+    }
+    root.scoreboardError = false
     for (var i = 0; i < events.length; i++) {
-      root.queueCrest(events[i].home.id, events[i].home.logo)
-      root.queueCrest(events[i].away.id, events[i].away.logo)
+      root.queueCrest(events[i].home.id)
+      root.queueCrest(events[i].away.id)
     }
     root.todayMatches = events
     root.match = Model.pickFollowed(events, root.teamId)
@@ -224,8 +242,12 @@ Panel {
 
   function applyStandings(raw) {
     var rows = []
-    try { rows = Model.parseStandings(JSON.parse(raw)) } catch (e) { rows = [] }
-    for (var i = 0; i < rows.length; i++) root.queueCrest(rows[i].id, rows[i].logo)
+    try { rows = Model.parseStandings(JSON.parse(raw)) } catch (e) {
+      root.standingsError = true
+      return
+    }
+    root.standingsError = false
+    for (var i = 0; i < rows.length; i++) root.queueCrest(rows[i].id)
     root.standings = rows
     if (rows.length) root.lastStandingsAt = new Date()
   }
@@ -238,6 +260,10 @@ Panel {
       ? { id: current.id, hs: current.home.score, as: current.away.score, state: current.state }
       : null
 
+    if (current && current.state === "post" && (!prev || prev.id !== current.id || prev.state !== "post")) {
+      root.postShownAt = new Date()
+      root.nowTick = new Date()
+    }
     if (!current || !prev || prev.id !== current.id) return
 
     // The final-score tail on the bar starts its countdown at the live→post
@@ -245,21 +271,19 @@ Panel {
     if ((prev.state === "live" || prev.state === "halftime") && current.state === "post") {
       root.postShownAt = new Date()
       root.nowTick = new Date()
-      if (!root.goalNotifications) return
-      root.notify("🏁 Fim de jogo", Model.matchLine(current), root.teamId)
-      return
+      if (root.goalNotifications) root.notify("🏁 Fim de jogo", Model.matchLine(current), root.teamId)
     }
 
-    if (!root.goalNotifications) return
-
-    if (prev.state === "pre" && (current.state === "live" || current.state === "halftime"))
+    if (root.goalNotifications && prev.state === "pre" && (current.state === "live" || current.state === "halftime"))
       root.notify("⚽ Começa o jogo!", Model.matchLine(current), root.teamId)
 
-    if (current.home.score > prev.hs) {
-      root.onGoal(current, current.home)
-    } else if (current.away.score > prev.as) {
-      root.onGoal(current, current.away)
-    }
+    var scorers = []
+    if (current.home.score > prev.hs) scorers.push(current.home)
+    if (current.away.score > prev.as) scorers.push(current.away)
+    scorers.sort(function(first, second) {
+      return (first.id === root.teamId ? 1 : 0) - (second.id === root.teamId ? 1 : 0)
+    })
+    for (var index = 0; index < scorers.length; index++) root.onGoal(current, scorers[index])
   }
 
   function notifyGoalOf(matchNow, team) {
@@ -279,7 +303,7 @@ Panel {
     var args = ["notify-send", "-a", "Brasileirão", "-t", "8000"]
     var uri = root.crestUris[iconTeamId]
     if (uri) args.push("-i", uri.replace("file://", ""))
-    args.push(summary, body)
+    args.push("--", summary, Model.notificationText(body))
     Quickshell.execDetached(args)
   }
 
@@ -344,12 +368,14 @@ Panel {
 
   // ========================== CREST CACHE ============================
 
-  function queueCrest(teamId, href) {
-    if (!teamId || !href) return
+  function queueCrest(teamId) {
+    teamId = Model.teamId(teamId)
+    if (!teamId) return
     if (root.crestUris[teamId] !== undefined) return
-    if (root.crestHrefQueued[href]) return
-    root.crestHrefQueued[href] = true
-    root.crestQueue.push({ id: String(teamId), href: String(href) })
+    if (root.crestHrefQueued[teamId]) return
+    if (Object.keys(root.crestHrefQueued).length >= 200) return
+    root.crestHrefQueued[teamId] = true
+    root.crestQueue.push({ id: teamId })
     root.pumpCrests()
   }
 
@@ -361,11 +387,8 @@ Panel {
     var job = root.crestQueue.shift()
     root.fetchingCrestId = job.id
     root.fetchingCrestTarget = root.cacheDir + "/" + job.id + ".png"
-    var tmp = root.fetchingCrestTarget + ".tmp"
-    var script = "mkdir -p '" + root.cacheDir + "'"
-      + " && curl -fsSL --connect-timeout 5 --max-time 20 -o '" + tmp + "' '" + job.href + "'"
-      + " && [ -s '" + tmp + "' ] && mv '" + tmp + "' '" + root.fetchingCrestTarget + "'"
-    crestProc.command = ["sh", "-c", script]
+    crestProc.command = ["python3", decodeURIComponent(Qt.resolvedUrl("CrestCache.py").toString().replace(/^file:\/\//, "")),
+      root.cacheDir, job.id]
     crestProc.running = true
   }
 
@@ -377,7 +400,7 @@ Panel {
         next[root.fetchingCrestId] = "file://" + root.fetchingCrestTarget
         root.crestUris = next
       }
-      root.pumpCrests()
+      Qt.callLater(root.pumpCrests)
     }
   }
 
@@ -398,6 +421,7 @@ Panel {
   }
 
   function selectTeam(id, name) {
+    if (!Model.teamId(id)) return
     root.writeSettings(function(e) {
       e.team = String(id)
       e.teamName = String(name)
@@ -966,7 +990,20 @@ Panel {
   IpcHandler {
     target: "russio.football"
 
+    function status(): string {
+      return JSON.stringify({ version: "1.0.1", league: root.league, team: root.teamId,
+        matches: root.todayMatches.length, standings: root.standings.length,
+        cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
+        scoreboardError: root.scoreboardError, standingsError: root.standingsError,
+        opened: root.opened, activeTab: root.activeTab, celebrating: root.celebrating })
+    }
+
     function open() { root.open() }
+    function openTab(name: string): void {
+      if (["jogos", "tabela", "ajustes"].indexOf(name) < 0) return
+      root.open()
+      root.activeTab = name
+    }
     function close() { root.close() }
     function show() { root.open() }
     function hide() { root.close() }
@@ -994,9 +1031,15 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: root.searchFocused
       onCloseRequested: root.close()
+      onTextKey: function(text) { if (text.toLowerCase() === "q") root.close() }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onMoveRequested: function(dx, dy) {
+        if (dx !== 0) {
+          var tabs = ["jogos", "tabela", "ajustes"]
+          root.activeTab = tabs[(tabs.indexOf(root.activeTab) + dx + tabs.length) % tabs.length]
+        }
         if (dy > 0) popupScroll.contentY = Math.max(0, Math.min(
           popupScroll.contentHeight - popupScroll.height,
           popupScroll.contentY + Style.space(24)))
@@ -1128,6 +1171,7 @@ Panel {
 
   // ---- Hero status: short word, the score lives in the jogos card.
   function heroStateLine() {
+    if (root.scoreboardError) return "Falha na atualização · dados anteriores"
     if (!root.teamFollowed) return "Escolha o seu time nos ajustes"
     var m = root.match
     if (!m) return "Sem jogo hoje"
@@ -1307,9 +1351,8 @@ Panel {
               // Clicking a row jumps the picker to that matchup's team —
               // cheap and obvious from the highlight.
               onClicked: {
-                if (String(modelData.home.id) === root.teamId)
-                  root.selectTeam(modelData.away.id, modelData.away.name)
-                else root.selectTeam(modelData.home.id, modelData.home.name)
+                if (String(modelData.home.id) !== root.teamId && String(modelData.away.id) !== root.teamId)
+                  root.selectTeam(modelData.home.id, modelData.home.name)
               }
             }
 
@@ -1664,6 +1707,9 @@ Panel {
           font.pixelSize: Style.font.caption
           clip: true
           onTextChanged: root.searchText = text
+          onActiveFocusChanged: root.searchFocused = activeFocus
+          Keys.onEscapePressed: root.close()
+          Component.onDestruction: root.searchFocused = false
         }
       }
 
@@ -1812,7 +1858,9 @@ Panel {
 
       Text {
         textFormat: Text.PlainText
-        text: "Dados: API pública da ESPN · atualização automática"
+        text: root.scoreboardError || root.standingsError
+          ? "ESPN indisponível · mantendo os últimos dados válidos"
+          : "Dados: API pública da ESPN · atualização automática"
         color: Qt.darker(root.foreground, 1.6)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

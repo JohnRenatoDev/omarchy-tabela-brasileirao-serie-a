@@ -22,18 +22,28 @@ function teamOf(competitor) {
     ? String(t.logo)
     : (t.logos && t.logos.length ? String(t.logos[0].href || "") : "")
   return {
-    id: String(t.id || ""),
+    id: teamId(t.id),
     abbr: String(t.abbreviation || name.slice(0, 3).toUpperCase()),
     name: name,
     logo: logo,
     // ESPN colors arrive as bare hex ("7E0202") — QML wants the "#".
-    color: typeof t.color === "string" && t.color ? "#" + t.color : "",
-    alternateColor: typeof t.alternateColor === "string" && t.alternateColor ? "#" + t.alternateColor : "",
+    color: /^[0-9a-fA-F]{6}$/.test(t.color || "") ? "#" + t.color : "",
+    alternateColor: /^[0-9a-fA-F]{6}$/.test(t.alternateColor || "") ? "#" + t.alternateColor : "",
     score: scoreToNumber(competitor && competitor.score)
   }
 }
 
+function teamId(value) {
+  var id = String(value === undefined || value === null ? "" : value)
+  return /^[1-9][0-9]{0,9}$/.test(id) ? id : ""
+}
+
+function notificationText(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 function scoreToNumber(value) {
+  if (value && typeof value === "object") value = value.value
   var n = parseInt(value, 10)
   return isFinite(n) && n >= 0 ? n : 0
 }
@@ -44,9 +54,10 @@ function parseEvent(e) {
   var homeSide = null
   var awaySide = null
   var competitors = comp.competitors || []
-  for (var i = 0; i < competitors.length; i++) {
+  for (var i = 0; i < Math.min(competitors.length, 16); i++) {
+    if (!competitors[i]) continue
     if (String(competitors[i].homeAway) === "home") homeSide = competitors[i]
-    else awaySide = competitors[i]
+    else if (String(competitors[i].homeAway) === "away") awaySide = competitors[i]
   }
   if (!homeSide || !awaySide) return null
   return {
@@ -60,9 +71,10 @@ function parseEvent(e) {
 }
 
 function parseScoreboard(json) {
-  var events = json && json.events ? json.events : []
+  if (!json || !Array.isArray(json.events)) throw new Error("Invalid scoreboard")
+  var events = json.events
   var matches = []
-  for (var i = 0; i < events.length; i++) {
+  for (var i = 0; i < Math.min(events.length, 100); i++) {
     var match = parseEvent(events[i])
     if (match) matches.push(match)
   }
@@ -95,7 +107,9 @@ function pickFollowed(matches, teamId) {
 //      keyed by name: "points", "gamesPlayed", "wins", "ties", "losses",
 //      "pointDifferential". Values are numbers; display values are strings.
 function statValue(stats, name) {
+  if (!Array.isArray(stats)) return 0
   for (var i = 0; i < stats.length; i++) {
+    if (!stats[i]) continue
     if (String(stats[i].name) === name) {
       var v = stats[i].value
       if (typeof v === "number") return v
@@ -107,22 +121,24 @@ function statValue(stats, name) {
 }
 
 function parseStandings(json) {
-  var children = json && json.children ? json.children : []
+  if (!json || !Array.isArray(json.children)) throw new Error("Invalid standings")
+  var children = json.children
   if (!children.length) return []
   var standings = children[0] && children[0].standings ? children[0].standings : {}
   var entries = standings.entries || []
+  if (!Array.isArray(standings.entries)) throw new Error("Invalid standings entries")
   var rows = []
-  for (var i = 0; i < entries.length; i++) {
+  for (var i = 0; i < Math.min(entries.length, 100); i++) {
     var e = entries[i]
     if (!e || !e.team) continue
     var t = e.team
     var logo = t.logos && t.logos.length ? String(t.logos[0].href || "") : ""
     rows.push({
-      id: String(t.id || ""),
+      id: teamId(t.id),
       abbr: String(t.abbreviation || ""),
       name: String(t.shortDisplayName || t.displayName || t.location || t.name || ""),
       logo: logo,
-      rank: Math.round(statValue(e.stats, "rank")),
+      rank: Math.round(statValue(e.stats, "rank")) || i + 1,
       points: Math.round(statValue(e.stats, "points")),
       played: Math.round(statValue(e.stats, "gamesPlayed")),
       wins: Math.round(statValue(e.stats, "wins")),

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "russio.football",
-  "name": "Brasileirão",
-  "version": "1.0.0",
+  "name": "Tabela Brasileirão Série A / Brazilian Série A Standings",
+  "version": "1.0.1",
   "author": "John Renato (JohnRenatoDev)",
   "description": "Placar do Brasileirão na barra: brasões, placar ao vivo, tabela da Série A e alerta de gol do time que você segue, com comemoração em tela cheia",
   "kinds": [
@@ -12,7 +12,7 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "Brasileirão",
+    "displayName": "Tabela Brasileirão Série A",
     "description": "Placar ao vivo do Brasileirão com brasões, tabela e alertas de gol",
     "category": "Sports",
     "allowMultiple": false

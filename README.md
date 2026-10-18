@@ -1,96 +1,55 @@
-# Brasileirão for Omarchy
+# Tabela Brasileirão Série A para Omarchy
 
-[![Omarchy 4.0+](https://img.shields.io/badge/Omarchy-4.0%2B-c6aa75?style=flat-square)](https://omarchy.org/manual/shell-plugins/)
-[![MIT License](https://img.shields.io/badge/license-MIT-6aa6b2?style=flat-square)](LICENSE)
+[English (US)](README.en-US.md) · Português (Brasil)
 
-A live Brasileirão Série A tracker for the Omarchy bar. Follow your team, and
-every matchday the bar shows both crests around the score as it changes in
-real time — plus goal-arrival notifications, a full-screen celebration when
-your team scores, and a full standings table one click away.
+Placar ao vivo, jogos do dia e classificação do Brasileirão na barra do Omarchy.
+Escolha seu time para receber notificações e comemorações opcionais.
+Nome em inglês: **Brazilian Série A Standings for Omarchy**.
 
-![Brasileirão bar widget showing two crests around a live score](preview.png)
+![Prévia do placar na barra](preview.png)
 
-## Highlights
+## Requisitos e instalação
 
-- Adaptive bar chip: match countdown before kickoff, live score while the
-  ball is rolling, final score for 30 minutes — out of the way otherwise
-- Both team crests rendered on the bar, loaded from a local PNG cache
-- Popup that opens on the exact game state: scoreboard card, minute, round
-- Three-tab interface — **Jogos**, **Tabela**, **Ajustes** — kept
-  minimal, modern, and clean
-- Team picker with a search field across the full Série A roster
-- Goal notifications over the desktop notification daemon, with the
-  scorer's crest as the toast icon
-- Full-screen goal celebration that appears fast and leaves fast, with
-  confetti in the team's colors
-- A quieter, deliberately bitter alert for when the other side scores —
-  independently toggleable
-- Data from ESPN's public soccer API: no key, no token, no rate-limit math
-- Native Omarchy styling — follows the active theme, nothing bundled
-
-## Install
-
-Requires Omarchy 4.0 or newer with shell plugin support.
+Omarchy 4.0+ com plugins da shell, Quickshell/QtQuick, `curl` 8.4+,
+`python3` 3.8+ e `notify-send` (pacote `libnotify`). Internet necessária;
+não exige conta, chave de API ou token.
 
 ```sh
-omarchy plugin add https://github.com/<you>/omarchy-football.git --enable
+omarchy plugin add https://github.com/JohnRenatoDev/omarchy-tabela-brasileirao-serie-a.git --enable
 ```
 
-The shell normally picks the plugin up immediately. If the widget does not
-appear, restart it once:
+O repositório foi renomeado de `omarchy-football` para
+`omarchy-tabela-brasileirao-serie-a`. O ID permanente continua
+`russio.football`, preservando configurações existentes.
+O instalador pede consentimento para adicionar/habilitar o plugin. Não há
+instalador com `sudo` nem alteração automática de outros plugins.
+Se necessário, execute `omarchy restart shell`.
 
-```sh
-omarchy restart shell
-```
+## Uso
 
-## Use
+Clique na bola ou no placar para abrir o painel; `Q` ou `Esc` fecha o painel.
+As setas esquerda/direita alternam as abas quando a busca não está em edição.
 
-While a match is on, the chip sits in the bar between your other widgets:
-
-| State | What the bar shows |
+| Aba | Conteúdo |
 | --- | --- |
-| Match day, pre-game | `crest · kickoff time · crest`, from ~2h before kickoff |
-| Live | pulsing dot, both crests, live score and match minute |
-| Halftime / full time | the score with `INT` / `FIM` |
-| After the final whistle | the score lingers ~30 min, then only the ball remains |
-| No game today | a lone soccer ball, kept clickable |
+| Jogos | Partida do seu time e jogos do dia. Outra partida seleciona o mandante; clicar na partida já seguida mantém seu time. |
+| Tabela | Pontos, jogos, vitórias, empates, derrotas e saldo. Clique em um clube para segui-lo. |
+| Ajustes | Busca de times, parar de seguir, notificações, comemorações, alerta rival e prévias. |
 
-| Action | Result |
-| --- | --- |
-| Left-click | Open or close the popup |
-| `Q` while open | Close the popup |
+A barra mostra o horário local antes do jogo, placar/minuto durante a partida,
+`INT` no intervalo e `FIM` no término. O resultado permanece por cerca de 30
+minutos após a primeira detecção do fim. Depois aparece a bola, ou o espaço
+é oculto se `badgeWhenIdle` for falso. A bola também aparece sem time selecionado.
 
-### The popup
+Comemorações duram aproximadamente 2,6 segundos; o aviso rival, 1,9 segundo.
+As superfícies não solicitam foco de teclado e têm região de entrada vazia.
+Notificações, comemoração e alerta rival são independentes. Prévias são ações
+explícitas e funcionam mesmo com o respectivo efeito automático desligado.
 
-- **Jogos** — the followed team's match as a scoreboard card (score, minute,
-  kickoff), plus every Brasileirão fixture of the day with mini crests. The
-  followed team is highlighted; clicking any fixture switches the chip to
-  that match.
-- **Tabela** — the full classification table: position, crest, name, points,
-  played, wins, draws, losses, and goal difference. Zone dots mark the
-  Libertadores places and the relegation places; your team stays lit.
-- **Ajustes** — the setup tab: a searchable team picker (type a name or a
-  three-letter abbreviation to filter the roster), the "stop following"
-  action, and the experience toggles — notifications, celebration, rival
-  alert — plus a one-click preview of both overlay moods.
+## Configuração
 
-## Goal celebrations
-
-When your team scores, a full-screen overlay takes the desktop for ~2.6
-seconds: a white arrival flash, the club crest springing in at 148 px, a
-pulsing **GOOOL!**, and falling confetti strips in the club's colors.
-
-When the opponent scores instead, the overlay stays quiet: a brief
-urgent-tinted vignette and the rival's crest dropping in tilted — sulk,
-then gone in under two seconds.
-
-Both surfaces are display-only layer-shell windows (`WlrLayer.Overlay`,
-`WlrKeyboardFocus.None`, empty input region): the party never steals a
-click or a keystroke from what you are doing.
-
-## Configuration
-
-The widget reads its settings from its own entry in `~/.config/omarchy/shell.json`:
+Use os controles do painel. Os ajustes pertencem à entrada `russio.football`
+em `~/.config/omarchy/shell.json`. Exemplo de entrada, não de arquivo completo:
 
 ```json
 {
@@ -105,62 +64,96 @@ The widget reads its settings from its own entry in `~/.config/omarchy/shell.jso
 }
 ```
 
-| Key | Default | What it does |
+| Chave | Padrão | Efeito |
 | --- | --- | --- |
-| `team` / `teamName` | — | The followed team (set by the picker, no manual edit needed) |
-| `goalNotifications` | `true` | Goal / kickoff / full-time desktop alerts |
-| `goalCelebration` | `true` | Full-screen celebration when your team scores |
-| `rivalAlert` | `true` | Discreet alert when the opposition scores |
-| `badgeWhenIdle` | `true` | Keep the team crest visible on no-game days |
+| `league` | `bra.1` | Liga ESPN; aceita códigos como `bra.2`, `bra.3`, `eng.1`. Inválidos usam `bra.1`. |
+| `team` / `teamName` | vazio | ID decimal positivo de até dez dígitos e nome do time seguido. |
+| `goalNotifications` | `true` | Notificações de gols, início e fim. |
+| `goalCelebration` | `true` | Comemoração automática dos gols do seu time. |
+| `rivalAlert` | `true` | Efeito automático quando o adversário marca. |
+| `badgeWhenIdle` | `true` | Mantém a bola acessível sem partida. |
 
-Any ESPN league slug works for `league` — `bra.1` (Série A), `bra.2` (Série B),
-`bra.3` (Série C), or anything else the API covers. The popup and the bar chip
-follow whichever slug is set.
+A interface está em PT-BR. Marcadores de zona indicam quatro primeiros e quatro
+últimos em tabelas grandes; não representam todas as regras, vagas extras ou outras ligas.
 
-## Data
+## Dados, rede e privacidade
 
-| Area | Source |
+| Uso | Destino HTTPS |
 | --- | --- |
-| Fixtures, live scores, match clock | `site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard` |
-| Classification table | `site.api.espn.com/apis/v2/sports/soccer/bra.1/standings` |
-| Club crests | Fetched once per session from ESPN's CDN, cached as PNG |
+| Jogos | `site.api.espn.com/apis/site/v2/sports/soccer/<league>/scoreboard` |
+| Classificação | `site.api.espn.com/apis/v2/sports/soccer/<league>/standings` |
+| Escudos | `a.espncdn.com/i/teamlogos/soccer/500/<id>.png` |
 
-Fetches adapt to the day: every 25 s with a live match, 90 s around a
-scheduled one, 10 min on idle days. Network failures keep the last good
-scoreboard on the bar — nothing blinks, nothing clears.
+URLs de escudos recebidas no JSON são ignoradas: o destino deriva de um ID
+validado. Downloads aceitam somente HTTPS, não seguem redirecionamentos e
+ignoram `.curlrc`. Não há telemetria ou envio de credenciais. ESPN/CDN recebem
+requisições normais, incluindo seu endereço de rede; proxy/DNS/TLS locais são
+responsabilidade do sistema. A API externa pode mudar, atrasar ou limitar pedidos.
 
-Crests are cached as PNGs under `~/.cache/omarchy/football/<team-id>.png`
-and always rendered from disk, so the bar never loads remote art directly.
+Placar: 25 segundos com jogo ao vivo do time seguido, 90 segundos com partida
+agendada/recém-encerrada, dez minutos sem jogo. Classificação: 30 minutos, ou ao
+abrir o painel se antiga. JSON: até 2 MiB e 100 partidas/linhas processadas.
+Falhas de rede ou JSON inválido preservam os últimos dados válidos com aviso.
+
+Escudos: downloads sequenciais, até 200 IDs distintos por instância/sessão,
+armazenados em `~/.cache/omarchy/football/<id>.png` com temporários privados e
+substituição atômica. Limite de 2 MiB, assinatura PNG e dimensões até 2048 × 2048
+verificadas; isso não substitui a segurança do decodificador do Qt. Quando a URL
+canônica não existe ou o download falha, aparece a abreviação; sem nova tentativa
+na mesma sessão. Cache persiste entre sessões, sem limpeza automática.
+Em vários monitores pode haver pedidos/alertas por instância, sem sincronização.
 
 ## IPC
 
-Everything is scriptable through the widget's IPC route:
+```sh
+omarchy-shell russio.football toggle
+omarchy-shell russio.football open
+omarchy-shell russio.football close
+omarchy-shell russio.football refresh
+omarchy-shell russio.football status
+omarchy-shell russio.football openTab tabela
+omarchy-shell russio.football celebrate
+omarchy-shell russio.football rivalGoal
+```
+
+`openTab` aceita `jogos`, `tabela` e `ajustes`. `status` informa versão, contagens
+e erros da última atualização. As prévias `celebrate` e `rivalGoal` exigem time
+selecionado. Omarchy/Quickshell gerencia o acesso ao IPC.
+
+## Atualização e remoção
 
 ```sh
-omarchy-shell russio.football toggle    # open/close the popup
-omarchy-shell russio.football open      # open the popup
-omarchy-shell russio.football close     # close it
-omarchy-shell russio.football refresh   # force a data refresh now
-omarchy-shell russio.football celebrate # preview the celebration overlay
-omarchy-shell russio.football rivalGoal # preview the rival alert
+omarchy plugin update russio.football
+omarchy plugin remove russio.football
 ```
 
-## Notes
+O gerenciador descarrega/remove o plugin. Para apagar também os escudos,
+execute separadamente, se desejar:
 
-- ESPN's live feed lags broadcast by a few seconds; the scoreboard follows
-  the feed, not the screen.
-- Multi-monitor setups mount one widget per screen; each refreshes on its
-  own cadence, and toasts/celebrations fire on whichever instance detects
-  the goal first.
-- ESPN team ids are stable numeric ids (`2674` = Santos), used as-is for
-  both matching and the crest cache.
-
-## Files
-
+```sh
+rm -rf -- "$HOME/.cache/omarchy/football"
 ```
-russio.football/
-├── README.md
-├── manifest.json     # plugin registration for the omarchy-shell host
-├── Panel.qml         # bar chip + tabbed popup + celebration overlay
-└── Model.js          # ESPN scoreboard/standings parsing and PT-BR labels
-```
+
+## Desenvolvimento e licença
+
+`Panel.qml`: interface/IPC; `Model.js`: interpretação dos dados;
+`CrestCache.py`: download e gravação. Valide com `omarchy plugin validate .`
+e `git diff --check`.
+
+### Direitos sobre código, preview e conteúdo de terceiros
+
+O código é distribuído sob a [licença MIT](LICENSE). O mantenedor confirma ter
+os direitos ou as permissões necessários para publicar o código e o preview
+incluídos neste repositório e submetê-los ao marketplace.
+
+Escudos, nomes e marcas dos clubes, assim como dados e conteúdo da ESPN,
+pertencem aos respectivos titulares. A licença MIT do código não se aplica
+automaticamente a esses elementos e não concede autorização para sua
+redistribuição ou uso de marcas. Sua exibição no plugin ou no preview não
+transfere direitos nem implica endosso. O uso desses elementos deve respeitar
+as permissões e condições aplicáveis dos respectivos titulares.
+
+Este é um projeto independente, sem afiliação, patrocínio ou endosso da ESPN,
+dos clubes ou dos organizadores da competição. Para comunicar um problema
+relacionado a direitos ou solicitar revisão de um asset, abra uma
+[issue no repositório](https://github.com/JohnRenatoDev/omarchy-tabela-brasileirao-serie-a/issues).
