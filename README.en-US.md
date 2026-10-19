@@ -6,7 +6,7 @@ Live scores, daily fixtures, and Brazilian league standings in the Omarchy bar.
 Follow your club for optional notifications and goal celebrations.
 Portuguese name: **Tabela Brasileirão Série A para Omarchy**.
 
-![Scoreboard preview in the bar](preview.png)
+![Open panel showing Série A standings and all 20 club crests](preview.png)
 
 ## Requirements and installation
 

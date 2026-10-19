@@ -6,7 +6,7 @@ Placar ao vivo, jogos do dia e classificação do Brasileirão na barra do Omarc
 Escolha seu time para receber notificações e comemorações opcionais.
 Nome em inglês: **Brazilian Série A Standings for Omarchy**.
 
-![Prévia do placar na barra](preview.png)
+![Painel aberto com a classificação da Série A e os escudos dos 20 clubes](preview.png)
 
 ## Requisitos e instalação
 
