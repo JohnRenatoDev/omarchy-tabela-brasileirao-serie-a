@@ -8,6 +8,11 @@ Nome em inglês: **Brazilian Série A Standings for Omarchy**.
 
 ![Painel aberto com a classificação da Série A e os escudos dos 20 clubes](preview.png)
 
+**Imagem ilustrativa:** captura da tabela do Brasileirão Série A exibida pelo
+plugin em **19/10/2026**. A classificação pode mudar após essa data. O time
+selecionado e os destaques servem apenas para demonstrar a interface e **não
+representam as preferências futebolísticas do autor do plugin**.
+
 ## Requisitos e instalação
 
 Omarchy 4.0+ com plugins da shell, Quickshell/QtQuick, `curl` 8.4+,

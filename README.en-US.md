@@ -8,6 +8,11 @@ Portuguese name: **Tabela Brasileirão Série A para Omarchy**.
 
 ![Open panel showing Série A standings and all 20 club crests](preview.png)
 
+**Illustrative image:** a capture of the Brazilian Série A standings displayed
+by the plugin on **October 19, 2026**. Standings may change after that date. The
+selected club and highlights only demonstrate the interface and **do not
+represent the plugin author's club preferences**.
+
 ## Requirements and installation
 
 Omarchy 4.0+ with shell plugins, Quickshell/QtQuick, `curl` 8.4+,
