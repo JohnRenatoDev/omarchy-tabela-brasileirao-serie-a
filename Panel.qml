@@ -32,6 +32,7 @@ Panel {
   readonly property color mutedColor: Qt.darker(foreground, 1.4)
   readonly property color accentColor: Color.accent
   readonly property color urgentColor: bar ? bar.urgent : Color.urgent
+  readonly property var zoneColors: ({ libertadores: "#4b83d1", preLibertadores: "#68c5f5", sulAmericana: "#c55383", relegation: root.urgentColor })
   // Panel (unlike BarWidget) doesn't define vertical — mirror it from the
   // host bar so the chip can stack on side-mounted bars.
   readonly property bool vertical: bar ? bar.vertical : false
@@ -991,7 +992,7 @@ Panel {
     target: "russio.football"
 
     function status(): string {
-      return JSON.stringify({ version: "1.0.1", league: root.league, team: root.teamId,
+      return JSON.stringify({ version: "1.0.2", league: root.league, team: root.teamId,
         matches: root.todayMatches.length, standings: root.standings.length,
         cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
         scoreboardError: root.scoreboardError, standingsError: root.standingsError,
@@ -1452,6 +1453,36 @@ Panel {
         fontFamily: root.fontFamily
       }
 
+      Grid {
+        width: parent.width
+        columns: 2
+        rowSpacing: Style.space(4)
+        visible: root.league === "bra.1"
+
+        Repeater {
+          model: [
+            { label: "1–4 Libertadores", zone: "libertadores" },
+            { label: "5 Pré-Libertadores", zone: "preLibertadores" },
+            { label: "6–11 Sul-Americana", zone: "sulAmericana" },
+            { label: "Últimos 4: rebaixamento", zone: "relegation" }
+          ]
+
+          Row {
+            required property var modelData
+            width: tabelaColumn.width / 2
+            spacing: Style.space(4)
+            Rectangle { width: 6; height: 6; radius: 3; color: root.zoneColors[parent.modelData.zone]; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+              textFormat: Text.PlainText
+              text: parent.modelData.label
+              color: root.mutedColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
+      }
+
       Item {
         width: parent.width
         height: 16
@@ -1462,18 +1493,7 @@ Panel {
           spacing: Style.space(10)
 
           Row {
-            spacing: Style.space(4)
-            Rectangle { width: 6; height: 6; radius: 3; color: root.accentColor; anchors.verticalCenter: parent.verticalCenter }
-            Text {
-              textFormat: Text.PlainText
-              text: "Libertadores"
-              color: root.mutedColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
-          Row {
+            visible: root.league !== "bra.1"
             spacing: Style.space(4)
             Rectangle { width: 6; height: 6; radius: 3; color: root.urgentColor; anchors.verticalCenter: parent.verticalCenter }
             Text {
@@ -1511,8 +1531,7 @@ Panel {
             required property var modelData
             required property int index
             readonly property bool followed: String(modelData.id) === root.teamId
-            readonly property bool zoneLibertadores: modelData.rank <= 4
-            readonly property bool zoneRebaixamento: root.standings.length > 12 && modelData.rank > root.standings.length - 4
+            readonly property string zone: Model.standingsZone(modelData.rank, root.standings.length, root.league)
             width: parent.width
             height: 22
 
@@ -1541,8 +1560,7 @@ Panel {
               anchors.left: parent.left
               anchors.leftMargin: Style.space(4)
               anchors.verticalCenter: parent.verticalCenter
-              color: tableRow.zoneLibertadores ? root.accentColor
-                : (tableRow.zoneRebaixamento ? root.urgentColor : "transparent")
+              color: root.zoneColors[tableRow.zone] || "transparent"
             }
 
             Text {

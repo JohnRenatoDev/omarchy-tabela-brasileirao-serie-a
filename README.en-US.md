@@ -77,8 +77,16 @@ Use the popup controls. Settings belong to the `russio.football` entry in
 | `rivalAlert` | `true` | Automatic effect when the opponent scores. |
 | `badgeWhenIdle` | `true` | Keep the ball accessible without a match. |
 
-The interface is in Brazilian Portuguese. Zone markers indicate the top four and
-bottom four in larger tables; they do not model every rule, extra berth, or other league.
+The interface is in Brazilian Portuguese. For Série A (`bra.1`), indicative zones are:
+- **1st–4th:** Libertadores (blue).
+- **5th:** Libertadores qualifying rounds (light blue).
+- **6th–11th:** Sudamericana (pink).
+- **17th–20th:** Relegation (theme alert color), in a 20-club table.
+
+These are fixed reference zones, not confirmation of qualification: extra berths,
+cup winners, and rule changes may affect the actual qualifiers. Continental zones
+are not applied to other leagues; tables with more than 12 clubs retain indicative
+relegation markers for the bottom four.
 
 ## Data, networking, and privacy
 

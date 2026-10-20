@@ -33,6 +33,16 @@ function teamOf(competitor) {
   }
 }
 
+function standingsZone(rank, total, league) {
+  if (!Number.isInteger(rank) || rank < 1 || rank > total) return ""
+  if (total > 12 && rank > total - 4) return "relegation"
+  if (league !== "bra.1") return ""
+  if (rank <= 4) return "libertadores"
+  if (rank === 5) return "preLibertadores"
+  if (rank <= 11) return "sulAmericana"
+  return ""
+}
+
 function teamId(value) {
   var id = String(value === undefined || value === null ? "" : value)
   return /^[1-9][0-9]{0,9}$/.test(id) ? id : ""

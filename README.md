@@ -78,8 +78,16 @@ em `~/.config/omarchy/shell.json`. Exemplo de entrada, não de arquivo completo:
 | `rivalAlert` | `true` | Efeito automático quando o adversário marca. |
 | `badgeWhenIdle` | `true` | Mantém a bola acessível sem partida. |
 
-A interface está em PT-BR. Marcadores de zona indicam quatro primeiros e quatro
-últimos em tabelas grandes; não representam todas as regras, vagas extras ou outras ligas.
+A interface está em PT-BR. Na Série A (`bra.1`), as faixas indicativas são:
+- **1º–4º:** Libertadores (azul).
+- **5º:** Pré-Libertadores (azul-claro).
+- **6º–11º:** Sul-Americana (rosa).
+- **17º–20º:** Rebaixamento (cor de alerta do tema), em uma tabela de 20 clubes.
+
+São referências fixas, não uma confirmação de classificação: vagas extras,
+campeões de copas e mudanças de regulamento podem alterar os classificados.
+As faixas continentais não são aplicadas a outras ligas; nas tabelas com mais de
+12 clubes, os quatro últimos continuam marcados como rebaixamento indicativo.
 
 ## Dados, rede e privacidade
 
