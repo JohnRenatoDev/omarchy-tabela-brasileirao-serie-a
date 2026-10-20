@@ -96,7 +96,7 @@ Panel {
   property var crestHrefQueued: ({})
   property string fetchingCrestId: ""
   property string fetchingCrestTarget: ""
-  readonly property string cacheDir: Quickshell.env("HOME") + "/.cache/omarchy/football"
+  readonly property string cacheDir: Quickshell.env("HOME") + "/.cache/omarchy/football/png-v1"
 
   // Polling cadence — live ticks fast, idle days coast.
   readonly property int pollLiveMs: 25000
@@ -992,7 +992,7 @@ Panel {
     target: "russio.football"
 
     function status(): string {
-      return JSON.stringify({ version: "1.0.3", league: root.league, team: root.teamId,
+      return JSON.stringify({ version: "1.0.4", league: root.league, team: root.teamId,
         matches: root.todayMatches.length, standings: root.standings.length,
         cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
         scoreboardError: root.scoreboardError, standingsError: root.standingsError,

@@ -113,11 +113,18 @@ when opening a stale popup. JSON: up to 2 MiB and 100 processed matches/rows.
 Network failures or invalid JSON retain the last valid data and display a warning.
 
 Crests: sequential downloads, up to 200 distinct IDs per instance/session, stored
-in `~/.cache/omarchy/football/<id>.png` using private temporary files and atomic
-replacement. Limit: 2 MiB, PNG signature, and dimensions up to 2048 × 2048 checked;
-this does not replace Qt decoder security. Missing canonical URLs/download errors
-show the abbreviation, without retries in the same session. Cache persists across
-sessions without automatic pruning. Multiple monitors may issue independent
+in `~/.cache/omarchy/football/png-v1/<id>.png` using private temporary files and
+atomic replacement. Before exposing a file to the UI or notifications, the helper
+limits downloads to 2 MiB and dimensions to 2048 × 2048, validates chunk framing,
+order, header values and CRCs, and rebuilds the PNG using only `IHDR`, `PLTE`,
+`tRNS`, `IDAT` and `IEND`. All other ancillary chunks, including compressed text,
+ICC profiles, EXIF and animation, are removed **without decompression**. Palette
+and transparency are preserved; color profiles and animation are not retained.
+The separate cache prevents reuse of old-version crests. Failures do not expose
+the previous file: the abbreviation is shown, without retries in the same session.
+Cache persists across sessions without automatic pruning. This mitigates metadata
+expansion, but is not full pixel-stream validation or a guarantee against other
+native decoder flaws; keep Qt/libpng updated. Multiple monitors may issue independent
 requests/alerts; there is no cross-instance synchronization.
 
 ## IPC

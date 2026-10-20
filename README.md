@@ -114,11 +114,18 @@ abrir o painel se antiga. JSON: até 2 MiB e 100 partidas/linhas processadas.
 Falhas de rede ou JSON inválido preservam os últimos dados válidos com aviso.
 
 Escudos: downloads sequenciais, até 200 IDs distintos por instância/sessão,
-armazenados em `~/.cache/omarchy/football/<id>.png` com temporários privados e
-substituição atômica. Limite de 2 MiB, assinatura PNG e dimensões até 2048 × 2048
-verificadas; isso não substitui a segurança do decodificador do Qt. Quando a URL
-canônica não existe ou o download falha, aparece a abreviação; sem nova tentativa
-na mesma sessão. Cache persiste entre sessões, sem limpeza automática.
+armazenados em `~/.cache/omarchy/football/png-v1/<id>.png` com temporários privados
+e substituição atômica. Antes de disponibilizar um arquivo à interface ou às
+notificações, o helper limita o download a 2 MiB e as dimensões a 2048 × 2048,
+valida cabeçalho, limites, ordem e CRC dos chunks e reconstrói o PNG usando apenas
+`IHDR`, `PLTE`, `tRNS`, `IDAT` e `IEND`. Outros chunks auxiliares, incluindo texto
+comprimido, perfis ICC, EXIF e animação, são removidos **sem descompressão**.
+Paleta e transparência são preservadas; perfis de cor e animações não são mantidos.
+O cache separado impede reutilizar escudos da versão anterior. Falhas não expõem
+o arquivo anterior: aparece a abreviação, sem nova tentativa na mesma sessão.
+O cache persiste entre sessões, sem limpeza automática. Isso mitiga a expansão
+de metadados, mas não é uma validação completa do fluxo de pixels nem uma garantia
+contra outras falhas do decodificador nativo; mantenha Qt/libpng atualizados.
 Em vários monitores pode haver pedidos/alertas por instância, sem sincronização.
 
 ## IPC
