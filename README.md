@@ -9,7 +9,7 @@ Nome em inglês: **Brazilian Série A Standings for Omarchy**.
 ![Painel aberto com a classificação da Série A e os escudos dos 20 clubes](preview.png)
 
 **Imagem ilustrativa:** captura da tabela do Brasileirão Série A exibida pelo
-plugin em **19/10/2026**. A classificação pode mudar após essa data. O time
+plugin em **20/10/2026**. A classificação pode mudar após essa data. O time
 selecionado e os destaques servem apenas para demonstrar a interface e **não
 representam as preferências futebolísticas do autor do plugin**.
 
@@ -88,6 +88,11 @@ São referências fixas, não uma confirmação de classificação: vagas extras
 campeões de copas e mudanças de regulamento podem alterar os classificados.
 As faixas continentais não são aplicadas a outras ligas; nas tabelas com mais de
 12 clubes, os quatro últimos continuam marcados como rebaixamento indicativo.
+
+A tabela usa colunas alinhadas para posição, clube, pontos (Pts), jogos (J),
+vitórias (V), empates (E), derrotas (D) e saldo de gols (SG). Divisórias separam
+as linhas, os pontos ficam em destaque e nomes longos são truncados sem invadir
+as estatísticas. A aba Tabela é mais larga para acomodar os dados.
 
 ## Dados, rede e privacidade
 

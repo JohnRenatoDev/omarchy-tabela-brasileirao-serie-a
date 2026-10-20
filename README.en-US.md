@@ -9,7 +9,7 @@ Portuguese name: **Tabela Brasileirão Série A para Omarchy**.
 ![Open panel showing Série A standings and all 20 club crests](preview.png)
 
 **Illustrative image:** a capture of the Brazilian Série A standings displayed
-by the plugin on **October 19, 2026**. Standings may change after that date. The
+by the plugin on **October 20, 2026**. Standings may change after that date. The
 selected club and highlights only demonstrate the interface and **do not
 represent the plugin author's club preferences**.
 
@@ -87,6 +87,11 @@ These are fixed reference zones, not confirmation of qualification: extra berths
 cup winners, and rule changes may affect the actual qualifiers. Continental zones
 are not applied to other leagues; tables with more than 12 clubs retain indicative
 relegation markers for the bottom four.
+
+The table uses aligned columns for rank, club, points (Pts), played (J), wins (V),
+draws (E), losses (D), and goal difference (SG). Row separators improve scanning,
+points are emphasized, and long club names are elided without overlapping the
+statistics. The standings tab is wider to accommodate the data.
 
 ## Data, networking, and privacy
 

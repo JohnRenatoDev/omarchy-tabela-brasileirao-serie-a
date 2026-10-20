@@ -992,7 +992,7 @@ Panel {
     target: "russio.football"
 
     function status(): string {
-      return JSON.stringify({ version: "1.0.2", league: root.league, team: root.teamId,
+      return JSON.stringify({ version: "1.0.3", league: root.league, team: root.teamId,
         matches: root.todayMatches.length, standings: root.standings.length,
         cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
         scoreboardError: root.scoreboardError, standingsError: root.standingsError,
@@ -1026,7 +1026,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(340))
+    contentWidth: panel.fittedContentWidth(Style.space(root.activeTab === "tabela" ? 420 : 340))
     contentHeight: panel.fittedContentHeight(popupColumn.implicitHeight)
 
     PanelKeyCatcher {
@@ -1446,6 +1446,15 @@ Panel {
       id: tabelaColumn
       width: parent.width
       spacing: Style.space(2)
+      readonly property real statsWidth: Style.space(160)
+      readonly property var statColumns: [
+        { label: "Pts", key: "points", width: 30 },
+        { label: "J", key: "played", width: 24 },
+        { label: "V", key: "wins", width: 24 },
+        { label: "E", key: "draws", width: 24 },
+        { label: "D", key: "losses", width: 24 },
+        { label: "SG", key: "gd", width: 34 }
+      ]
 
       PanelSectionHeader {
         text: "Classificação · " + Model.leagueName(root.league)
@@ -1483,45 +1492,68 @@ Panel {
         }
       }
 
-      Item {
+      Text {
+        visible: root.league !== "bra.1"
+        textFormat: Text.PlainText
+        text: "Últimos 4: rebaixamento indicativo"
+        color: root.urgentColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
+      Rectangle {
         width: parent.width
-        height: 16
+        height: Style.space(26)
+        radius: 4
+        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
 
-        Row {
+        Text {
+          text: "#"
+          color: root.mutedColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          width: 14
+          horizontalAlignment: Text.AlignRight
           anchors.left: parent.left
+          anchors.leftMargin: Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(10)
-
-          Row {
-            visible: root.league !== "bra.1"
-            spacing: Style.space(4)
-            Rectangle { width: 6; height: 6; radius: 3; color: root.urgentColor; anchors.verticalCenter: parent.verticalCenter }
-            Text {
-              textFormat: Text.PlainText
-              text: "Rebaixamento"
-              color: root.mutedColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
         }
 
         Text {
           textFormat: Text.PlainText
-          text: "Pts  J  V  E  D  SG"
+          text: "Clube"
           color: root.mutedColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           font.bold: true
-          anchors.right: parent.right
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(54)
           anchors.verticalCenter: parent.verticalCenter
+        }
+
+        Row {
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(6)
+          anchors.verticalCenter: parent.verticalCenter
+          Repeater {
+            model: tabelaColumn.statColumns
+            Text {
+              required property var modelData
+              width: Style.space(modelData.width)
+              text: modelData.label
+              color: root.mutedColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              horizontalAlignment: Text.AlignRight
+            }
+          }
         }
       }
 
       Column {
         width: parent.width
-        spacing: Style.space(1)
+        spacing: 0
 
         Repeater {
           model: root.standings
@@ -1533,7 +1565,7 @@ Panel {
             readonly property bool followed: String(modelData.id) === root.teamId
             readonly property string zone: Model.standingsZone(modelData.rank, root.standings.length, root.league)
             width: parent.width
-            height: 22
+            height: Style.space(26)
 
             Rectangle {
               anchors.fill: parent
@@ -1543,6 +1575,14 @@ Panel {
                 : (tableMouse.containsMouse
                    ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
                    : "transparent")
+            }
+
+            Rectangle {
+              width: parent.width
+              height: 1
+              anchors.bottom: parent.bottom
+              color: root.foreground
+              opacity: 0.07
             }
 
             MouseArea {
@@ -1595,21 +1635,31 @@ Panel {
               elide: Text.ElideRight
               anchors.left: parent.left
               anchors.leftMargin: Style.space(54)
+              anchors.right: statValues.left
+              anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
-              textFormat: Text.PlainText
-              text: modelData.points + "  " + modelData.played + "  "
-                + modelData.wins + "  " + modelData.draws + "  "
-                + modelData.losses + "  "
-                + (modelData.gd > 0 ? "+" + modelData.gd : modelData.gd)
-              color: tableRow.followed ? root.accentColor : root.mutedColor
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+            Row {
+              id: statValues
+              width: tabelaColumn.statsWidth
               anchors.right: parent.right
               anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
+              Repeater {
+                model: tabelaColumn.statColumns
+                Text {
+                  required property var modelData
+                  width: Style.space(modelData.width)
+                  textFormat: Text.PlainText
+                  text: (modelData.key === "gd" && tableRow.modelData.gd > 0 ? "+" : "") + tableRow.modelData[modelData.key]
+                  color: tableRow.followed ? root.accentColor : root.mutedColor
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: modelData.key === "points"
+                  horizontalAlignment: Text.AlignRight
+                }
+              }
             }
           }
         }
