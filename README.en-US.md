@@ -111,6 +111,8 @@ Scores: every 25 seconds while your club is playing, 90 seconds for scheduled or
 recently finished matches, ten minutes when idle. Standings: every 30 minutes or
 when opening a stale popup. JSON: up to 2 MiB and 100 processed matches/rows.
 Network failures or invalid JSON retain the last valid data and display a warning.
+API match clocks are limited to 32 characters; longer values are ignored.
+Minute/stoppage-time formatting does not use a backtracking regular expression.
 
 Crests: sequential downloads, up to 200 distinct IDs per instance/session, stored
 in `~/.cache/omarchy/football/png-v1/<id>.png` using private temporary files and

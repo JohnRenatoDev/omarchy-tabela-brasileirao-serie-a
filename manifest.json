@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "russio.football",
   "name": "Tabela Brasileirão Série A / Brazilian Série A Standings",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": "John Renato (JohnRenatoDev)",
   "description": "Placar do Brasileirão na barra: brasões, placar ao vivo, tabela da Série A e alerta de gol do time que você segue, com comemoração em tela cheia",
   "kinds": [

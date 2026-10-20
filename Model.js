@@ -75,7 +75,7 @@ function parseEvent(e) {
     home: teamOf(homeSide),
     away: teamOf(awaySide),
     state: stateOf(e.status),
-    clock: String((e.status && e.status.displayClock) || ""),
+    clock: clockText(e.status && e.status.displayClock),
     date: String(e.date || "")
   }
 }
@@ -168,9 +168,18 @@ function parseStandings(json) {
 // ---- Bar chip labels.
 
 // "45'+2'" keeps its addition clock; only trailing quotes get trimmed.
+function clockText(value) {
+  if (typeof value !== "string" && typeof value !== "number") return ""
+  var text = String(value || "")
+  return text.length <= 32 ? text : ""
+}
+
 function clockLabel(match) {
-  if (!match || !match.clock) return ""
-  return match.clock.replace(/'+$/, '') + "'"
+  var clock = clockText(match && match.clock)
+  if (!clock) return ""
+  var end = clock.length
+  while (end > 0 && clock.charAt(end - 1) === "'") end--
+  return clock.slice(0, end) + "'"
 }
 
 function stateLabel(match) {

@@ -992,7 +992,7 @@ Panel {
     target: "russio.football"
 
     function status(): string {
-      return JSON.stringify({ version: "1.0.4", league: root.league, team: root.teamId,
+      return JSON.stringify({ version: "1.0.5", league: root.league, team: root.teamId,
         matches: root.todayMatches.length, standings: root.standings.length,
         cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
         scoreboardError: root.scoreboardError, standingsError: root.standingsError,

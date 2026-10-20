@@ -112,6 +112,8 @@ Placar: 25 segundos com jogo ao vivo do time seguido, 90 segundos com partida
 agendada/recém-encerrada, dez minutos sem jogo. Classificação: 30 minutos, ou ao
 abrir o painel se antiga. JSON: até 2 MiB e 100 partidas/linhas processadas.
 Falhas de rede ou JSON inválido preservam os últimos dados válidos com aviso.
+O relógio de jogo recebido da API é limitado a 32 caracteres; valores maiores
+são ignorados. A formatação de minutos/acréscimos não usa regex com backtracking.
 
 Escudos: downloads sequenciais, até 200 IDs distintos por instância/sessão,
 armazenados em `~/.cache/omarchy/football/png-v1/<id>.png` com temporários privados
