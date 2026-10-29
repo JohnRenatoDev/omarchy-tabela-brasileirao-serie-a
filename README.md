@@ -1,10 +1,12 @@
-# Tabela Brasileirão Série A para Omarchy
+# Futebol BR para Omarchy
 
 [English (US)](README.en-US.md) · Português (Brasil)
 
-Placar ao vivo, jogos do dia e classificação do Brasileirão na barra do Omarchy.
-Escolha seu time para receber notificações e comemorações opcionais.
-Nome em inglês: **Brazilian Série A Standings for Omarchy**.
+Placar ao vivo, jogos do dia e classificação na barra do Omarchy: Série A,
+Série B, Copa do Brasil, Libertadores e Sul-Americana. Escolha seu time para
+receber notificações e comemorações opcionais em todas as competições que ele
+disputa. Nome em inglês: **Brazilian Football Scores for Omarchy**.
+Antes chamado *Tabela Brasileirão Série A*.
 
 ![Painel aberto com a classificação da Série A e os escudos dos 20 clubes](preview.png)
 
@@ -37,9 +39,26 @@ As setas esquerda/direita alternam as abas quando a busca não está em edição
 
 | Aba | Conteúdo |
 | --- | --- |
-| Jogos | Partida do seu time e jogos do dia. Outra partida seleciona o mandante; clicar na partida já seguida mantém seu time. |
-| Tabela | Pontos, jogos, vitórias, empates, derrotas e saldo. Clique em um clube para segui-lo. |
-| Ajustes | Busca de times, parar de seguir, notificações, comemorações, alerta rival e prévias. |
+| Jogos | Partida do seu time (de qualquer competição) e jogos do dia da competição escolhida. Outra partida seleciona o mandante; clicar na partida já seguida mantém seu time. |
+| Tabela | Pontos, jogos, vitórias, empates, derrotas e saldo; nas copas sul-americanas, um bloco por grupo. Clique em um clube para segui-lo. |
+| Ajustes | Seu time e as competições em que ele é acompanhado; busca sem acentos em todas as competições (Enter segue o primeiro resultado, Esc limpa); competição exibida; alertas e prévias. |
+
+### Competições
+
+| Competição | Código ESPN | Tabela |
+| --- | --- | --- |
+| Série A | `bra.1` | Única, 20 clubes |
+| Série B | `bra.2` | Única, 20 clubes |
+| Copa do Brasil | `bra.copa_do_brazil` | Não há (mata-mata) |
+| Libertadores | `conmebol.libertadores` | Fase de grupos (8 × 4) |
+| Sul-Americana | `conmebol.sudamericana` | Fase de grupos (8 × 4) |
+
+O time seguido é acompanhado em toda competição do catálogo cuja lista de
+participantes da ESPN o inclui, não só na exibida. Exemplo: com a Série A na
+tela, um gol do seu time na Libertadores também notifica; a notificação e o
+painel indicam a competição. A lista de competições do time aparece em Ajustes.
+Série C e Série D não estão no catálogo: a ESPN não publica dados de 2026 para
+elas.
 
 A barra mostra o horário local antes do jogo, placar/minuto durante a partida,
 `INT` no intervalo e `FIM` no término. O resultado permanece por cerca de 30
@@ -71,23 +90,29 @@ em `~/.config/omarchy/shell.json`. Exemplo de entrada, não de arquivo completo:
 
 | Chave | Padrão | Efeito |
 | --- | --- | --- |
-| `league` | `bra.1` | Liga ESPN; aceita códigos como `bra.2`, `bra.3`, `eng.1`. Inválidos usam `bra.1`. |
+| `league` | `bra.1` | Competição exibida; escolha em Ajustes. Aceita os códigos da tabela de competições e, por compatibilidade, outros códigos ESPN como `eng.1`. Inválidos usam `bra.1`. |
 | `team` / `teamName` | vazio | ID decimal positivo de até dez dígitos e nome do time seguido. |
 | `goalNotifications` | `true` | Notificações de gols, início e fim. |
 | `goalCelebration` | `true` | Comemoração automática dos gols do seu time. |
 | `rivalAlert` | `true` | Efeito automático quando o adversário marca. |
 | `badgeWhenIdle` | `true` | Mantém a bola acessível sem partida. |
 
-A interface está em PT-BR. Na Série A (`bra.1`), as faixas indicativas são:
-- **1º–4º:** Libertadores (azul).
-- **5º:** Pré-Libertadores (azul-claro).
-- **6º–11º:** Sul-Americana (rosa).
-- **17º–20º:** Rebaixamento (cor de alerta do tema), em uma tabela de 20 clubes.
+A interface está em PT-BR. As faixas seguem os regulamentos de 2026:
 
-São referências fixas, não uma confirmação de classificação: vagas extras,
-campeões de copas e mudanças de regulamento podem alterar os classificados.
-As faixas continentais não são aplicadas a outras ligas; nas tabelas com mais de
-12 clubes, os quatro últimos continuam marcados como rebaixamento indicativo.
+| Competição | Faixas |
+| --- | --- |
+| Série A | 1º–4º Libertadores (azul), 5º Pré-Libertadores (azul-claro), 6º–11º Sul-Americana (rosa), 17º–20º rebaixamento (cor de alerta do tema) |
+| Série B | 1º–2º acesso (azul), 3º–6º playoff de acesso (azul-claro), 17º–20º rebaixamento |
+| Libertadores | Por grupo: 1º–2º oitavas de final (azul), 3º playoff de oitavas da Sul-Americana (rosa) |
+| Sul-Americana | Por grupo: 1º oitavas de final (azul), 2º playoff de oitavas (azul-claro) |
+
+Fontes: Manual de Clubes CONMEBOL Libertadores 2026 e CONMEBOL Sudamericana 2026
+(versão de junho de 2026) e regulamentos da CBF divulgados pela imprensa. São
+referências fixas, não uma confirmação de classificação: vagas extras, campeões
+de copas e mudanças de regulamento podem alterar os classificados. Nas copas, a
+posição exibida é a da ESPN, que já aplica o confronto direto como primeiro
+critério de desempate. Em outras ligas ESPN configuradas manualmente, tabelas
+com mais de 12 clubes mantêm os quatro últimos como rebaixamento indicativo.
 
 A tabela usa colunas alinhadas para posição, clube, pontos (Pts), jogos (J),
 vitórias (V), empates (E), derrotas (D) e saldo de gols (SG). Divisórias separam
@@ -100,6 +125,7 @@ as estatísticas. A aba Tabela é mais larga para acomodar os dados.
 | --- | --- |
 | Jogos | `site.api.espn.com/apis/site/v2/sports/soccer/<league>/scoreboard` |
 | Classificação | `site.api.espn.com/apis/v2/sports/soccer/<league>/standings` |
+| Participantes | `site.api.espn.com/apis/site/v2/sports/soccer/<league>/teams` |
 | Escudos | `a.espncdn.com/i/teamlogos/soccer/500/<id>.png` |
 
 URLs de escudos recebidas no JSON são ignoradas: o destino deriva de um ID
@@ -109,13 +135,16 @@ requisições normais, incluindo seu endereço de rede; proxy/DNS/TLS locais sã
 responsabilidade do sistema. A API externa pode mudar, atrasar ou limitar pedidos.
 
 Placar: 25 segundos com jogo ao vivo do time seguido, 90 segundos com partida
-agendada/recém-encerrada, dez minutos sem jogo. Classificação: 30 minutos, ou ao
-abrir o painel se antiga. JSON: até 2 MiB e 100 partidas/linhas processadas.
+agendada/recém-encerrada, dez minutos sem jogo. Cada ciclo consulta, uma por vez,
+a competição exibida e as demais que o time seguido disputa (em geral até três
+requisições). Classificação: 30 minutos, ou ao abrir o painel se antiga; a Copa
+do Brasil não tem classificação e não é consultada. Participantes das cinco
+competições: ao iniciar e a cada 12 horas. JSON: até 2 MiB e 100 partidas/linhas processadas.
 Falhas de rede ou JSON inválido preservam os últimos dados válidos com aviso.
 O relógio de jogo recebido da API é limitado a 32 caracteres; valores maiores
 são ignorados. A formatação de minutos/acréscimos não usa regex com backtracking.
 
-Escudos: downloads sequenciais, até 200 IDs distintos por instância/sessão,
+Escudos: downloads sequenciais, até 400 IDs distintos por instância/sessão,
 armazenados em `~/.cache/omarchy/football/png-v1/<id>.png` com temporários privados
 e substituição atômica. Antes de disponibilizar um arquivo à interface ou às
 notificações, o helper limita o download a 2 MiB e as dimensões a 2048 × 2048,
