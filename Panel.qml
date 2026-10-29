@@ -6,14 +6,18 @@ import qs.Ui
 import qs.Commons
 import "Model.js" as Model
 
-// Brasileirão bar widget: crest·score·crest chip on the bar while the
+// Futebol BR bar widget: crest·score·crest chip on the bar while the
 // followed team has a game, goal/kickoff/final notifications over
 // notify-send, a full-screen goal celebration, and a tabbed popup —
-// Jogos (today's slate), Tabela (Serie A standings), Ajustes (team
-// picker with search, toggles).
+// Jogos (today's slate), Tabela (league table or cup groups), Ajustes
+// (competition picker, team picker with search, toggles).
 //
-// Data comes from ESPN's public scoreboard/standings endpoints (no key),
-// fetched by curl like the weather widget. Crests are cached as PNGs under
+// The followed club is tracked in every catalog competition whose roster
+// lists it (Série A + Copa do Brasil + Libertadores, say), not only the
+// one on screen.
+//
+// Data comes from ESPN's public scoreboard/standings/teams endpoints (no
+// key), fetched by curl like the weather widget. Crests are cached as PNGs under
 // ~/.cache/omarchy/football/ and always rendered from disk — the bar never
 // loads remote art directly.
 
@@ -32,14 +36,15 @@ Panel {
   readonly property color mutedColor: Qt.darker(foreground, 1.4)
   readonly property color accentColor: Color.accent
   readonly property color urgentColor: bar ? bar.urgent : Color.urgent
-  readonly property var zoneColors: ({ libertadores: "#4b83d1", preLibertadores: "#68c5f5", sulAmericana: "#c55383", relegation: root.urgentColor })
+  readonly property var zoneColors: ({ libertadores: "#4b83d1", preLibertadores: "#68c5f5", sulAmericana: "#c55383",
+    advance: "#4b83d1", playoff: "#68c5f5", relegation: root.urgentColor })
   // Panel (unlike BarWidget) doesn't define vertical — mirror it from the
   // host bar so the chip can stack on side-mounted bars.
   readonly property bool vertical: bar ? bar.vertical : false
 
   // ---- Settings (inline shell.json entry of russio.football).
-  readonly property string league: /^[a-z]{2,8}\.[1-9][0-9]?$/.test(String(setting("league", "bra.1")))
-    ? String(setting("league", "bra.1")) : "bra.1"
+  readonly property string league: Model.leagueCode(setting("league", "bra.1"))
+  readonly property string leagueFormat: Model.leagueFormat(league)
   readonly property string teamId: Model.teamId(settingString("team", ""))
   readonly property string teamName: {
     var v = setting("teamName", "")
@@ -79,11 +84,27 @@ Panel {
   property real celebrationSeed: 0
 
   // ---- Match data.
-  property var todayMatches: []          // parsed events for today
-  property var match: null               // the followed team's match
-  property var standings: []             // parsed Serie A table rows
+  property var todayMatches: []          // today's events in the selected competition
+  property var match: null               // the followed team's match, any competition
+  property var standings: []             // parsed table rows (cup groups flattened)
+  property var rosters: ({})             // competition code -> parsed /teams rows
   property bool scoreboardError: false
   property bool standingsError: false
+  readonly property var teamLeagues: Model.teamLeagues(root.rosters, root.teamId)
+  readonly property var followedLeagues: Model.followedLeagues(root.league, root.rosters, root.teamId)
+
+  // ---- Fetch batches. A scoreboard refresh walks every followed
+  //      competition one curl at a time and lands as one merged slate.
+  property bool scoreboardBusy: false
+  property string scoreboardBatchKey: ""
+  property var scoreboardQueue: []
+  property var scoreboardBatch: []
+  property bool scoreboardBatchFailed: false
+  property string scoreboardLeague: ""
+  property string standingsLeague: ""
+  property bool rosterBusy: false
+  property var rosterQueue: []
+  property string rosterLeague: ""
   property var lastScoreState: null      // previous poll's {id, hs, as, state}
   property date postShownAt: new Date(0) // when the final score first showed
   property date lastStandingsAt: new Date(0)
@@ -103,6 +124,7 @@ Panel {
   readonly property int pollActiveMs: 90000
   readonly property int pollIdleMs: 600000
   readonly property int standingsRefreshMs: 1800000
+  readonly property int rosterRefreshMs: 12 * 60 * 60 * 1000
   readonly property int postTailMs: 30 * 60 * 1000
   readonly property string followedMatchId: match ? match.id : ""
 
@@ -133,12 +155,58 @@ Panel {
 
   // ============================== FETCH ==============================
 
+  function espnCommand(url) {
+    return ["curl", "--disable", "-fsS", "--proto", "=https",
+      "--max-filesize", "2097152", "--connect-timeout", "5", "--max-time", "12", "--", url]
+  }
+
+  // What a scoreboard batch was fetched for; a batch whose key no longer
+  // matches the settings is stale and gets thrown away.
+  function scoreboardKey() {
+    return root.league + "|" + root.teamId + "|" + root.followedLeagues.join(",")
+  }
+
+  // A request made mid-batch is dropped: if the settings moved meanwhile,
+  // the batch comes back stale and reruns itself in finishScoreboard().
   function refreshScoreboard() {
-    if (scoreboardProc.running) return
-    scoreboardProc.command = ["curl", "--disable", "-fsS", "--proto", "=https",
-      "--max-filesize", "2097152", "--connect-timeout", "5", "--max-time", "12", "--",
-      "https://site.api.espn.com/apis/site/v2/sports/soccer/" + root.league + "/scoreboard"]
+    if (root.scoreboardBusy) return
+    root.scoreboardBusy = true
+    root.scoreboardBatchKey = root.scoreboardKey()
+    root.scoreboardQueue = root.followedLeagues.slice()
+    root.scoreboardBatch = []
+    root.scoreboardBatchFailed = false
+    root.pumpScoreboard()
+  }
+
+  // One curl per competition, in turn — the Process restarts from a
+  // callLater, never from inside its own onExited.
+  function pumpScoreboard() {
+    if (!root.scoreboardQueue.length) {
+      root.finishScoreboard()
+      return
+    }
+    var queue = root.scoreboardQueue.slice()
+    root.scoreboardLeague = queue.shift()
+    root.scoreboardQueue = queue
+    scoreboardProc.command = root.espnCommand(
+      "https://site.api.espn.com/apis/site/v2/sports/soccer/" + root.scoreboardLeague + "/scoreboard")
     scoreboardProc.running = true
+  }
+
+  function collectScoreboard(league, raw) {
+    try {
+      root.scoreboardBatch = root.scoreboardBatch.concat(Model.parseScoreboard(JSON.parse(raw), league))
+    } catch (e) {
+      root.scoreboardBatchFailed = true
+    }
+  }
+
+  function finishScoreboard() {
+    root.scoreboardBusy = false
+    if (root.scoreboardBatchKey === root.scoreboardKey())
+      root.applyScoreboard(root.scoreboardBatch, root.scoreboardBatchFailed)
+    else
+      root.refreshScoreboard()
   }
 
   Timer {
@@ -154,11 +222,17 @@ Panel {
   // cadence governs the next tick rather than finishing the old cycle.
   onScoreboardIntervalMsChanged: scoreboardTimer.restart()
 
+  // Knockout cups have no table to fetch; the Tabela tab says so instead.
   function refreshStandings() {
     if (standingsProc.running) return
-    standingsProc.command = ["curl", "--disable", "-fsS", "--proto", "=https",
-      "--max-filesize", "2097152", "--connect-timeout", "5", "--max-time", "12", "--",
-      "https://site.api.espn.com/apis/v2/sports/soccer/" + root.league + "/standings"]
+    if (root.leagueFormat === "knockout") {
+      root.standings = []
+      root.standingsError = false
+      return
+    }
+    root.standingsLeague = root.league
+    standingsProc.command = root.espnCommand(
+      "https://site.api.espn.com/apis/v2/sports/soccer/" + root.league + "/standings")
     standingsProc.running = true
   }
 
@@ -169,6 +243,64 @@ Panel {
     running: true
     triggeredOnStart: false
     onTriggered: root.refreshStandings()
+  }
+
+  // Every catalog roster, one curl at a time: the team picker for cups and
+  // the list of competitions the followed club plays in.
+  function refreshRosters() {
+    if (root.rosterBusy) return
+    root.rosterBusy = true
+    var codes = []
+    var catalog = Model.competitions()
+    for (var i = 0; i < catalog.length; i++) codes.push(catalog[i].code)
+    root.rosterQueue = codes
+    root.pumpRosters()
+  }
+
+  function pumpRosters() {
+    if (!root.rosterQueue.length) {
+      root.rosterBusy = false
+      // Fresh rosters can add cups to the followed club's slate.
+      if (root.teamFollowed) root.refreshScoreboard()
+      return
+    }
+    var queue = root.rosterQueue.slice()
+    root.rosterLeague = queue.shift()
+    root.rosterQueue = queue
+    rosterProc.command = root.espnCommand(
+      "https://site.api.espn.com/apis/site/v2/sports/soccer/" + root.rosterLeague + "/teams")
+    rosterProc.running = true
+  }
+
+  // A failed roster keeps the previous one — membership changes slowly.
+  function applyRoster(code, raw) {
+    var rows = []
+    try { rows = Model.parseTeams(JSON.parse(raw)) } catch (e) {
+      return
+    }
+    var next = Object.assign({}, root.rosters)
+    next[code] = rows
+    root.rosters = next
+  }
+
+  Timer {
+    id: rosterTimer
+    interval: root.rosterRefreshMs
+    repeat: true
+    running: true
+    triggeredOnStart: false
+    onTriggered: root.refreshRosters()
+  }
+
+  // A new competition on screen: drop the old table and slate right away
+  // so nothing of the previous one lingers, then fetch the new one.
+  onLeagueChanged: {
+    root.standings = []
+    root.todayMatches = []
+    root.standingsError = false
+    root.lastStandingsAt = new Date(0)
+    root.refreshStandings()
+    root.refreshScoreboard()
   }
 
   function open() {
@@ -187,6 +319,7 @@ Panel {
   Component.onCompleted: {
     root.refreshScoreboard()
     root.refreshStandings()
+    root.refreshRosters()
   }
 
   Process {
@@ -196,8 +329,9 @@ Panel {
       waitForEnd: true
     }
     onExited: function(exitCode) {
-      if (exitCode === 0) root.applyScoreboard(scoreboardOutput.text)
-      else root.scoreboardError = true
+      if (exitCode === 0) root.collectScoreboard(root.scoreboardLeague, scoreboardOutput.text)
+      else root.scoreboardBatchFailed = true
+      Qt.callLater(root.pumpScoreboard)
     }
   }
 
@@ -208,8 +342,25 @@ Panel {
       waitForEnd: true
     }
     onExited: function(exitCode) {
+      // The competition changed under the request — fetch the right one.
+      if (root.standingsLeague !== root.league) {
+        Qt.callLater(root.refreshStandings)
+        return
+      }
       if (exitCode === 0) root.applyStandings(standingsOutput.text)
       else root.standingsError = true
+    }
+  }
+
+  Process {
+    id: rosterProc
+    stdout: StdioCollector {
+      id: rosterOutput
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.applyRoster(root.rosterLeague, rosterOutput.text)
+      Qt.callLater(root.pumpRosters)
     }
   }
 
@@ -225,19 +376,33 @@ Panel {
     onTriggered: root.nowTick = new Date()
   }
 
-  function applyScoreboard(raw) {
-    var events = []
-    try { events = Model.parseScoreboard(JSON.parse(raw)) } catch (e) {
+  // Any failed competition keeps the whole previous slate: a half slate
+  // would drop the followed match and reset its goal tracking.
+  function applyScoreboard(events, failed) {
+    if (failed) {
       root.scoreboardError = true
       return
     }
     root.scoreboardError = false
+    var seen = {}
+    var merged = []
+    var today = []
     for (var i = 0; i < events.length; i++) {
-      root.queueCrest(events[i].home.id)
-      root.queueCrest(events[i].away.id)
+      var event = events[i]
+      if (event.id && seen[event.id]) continue
+      if (event.id) seen[event.id] = true
+      merged.push(event)
+      if (event.league !== root.league) continue
+      today.push(event)
+      root.queueCrest(event.home.id)
+      root.queueCrest(event.away.id)
     }
-    root.todayMatches = events
-    root.match = Model.pickFollowed(events, root.teamId)
+    root.todayMatches = today
+    root.match = Model.pickFollowed(merged, root.teamId)
+    if (root.match) {
+      root.queueCrest(root.match.home.id)
+      root.queueCrest(root.match.away.id)
+    }
     root.handleNotifications(root.match)
   }
 
@@ -272,11 +437,12 @@ Panel {
     if ((prev.state === "live" || prev.state === "halftime") && current.state === "post") {
       root.postShownAt = new Date()
       root.nowTick = new Date()
-      if (root.goalNotifications) root.notify("🏁 Fim de jogo", Model.matchLine(current), root.teamId)
+      if (root.goalNotifications)
+        root.notify("🏁 Fim de jogo" + root.competitionSuffix(current), Model.matchLine(current), root.teamId)
     }
 
     if (root.goalNotifications && prev.state === "pre" && (current.state === "live" || current.state === "halftime"))
-      root.notify("⚽ Começa o jogo!", Model.matchLine(current), root.teamId)
+      root.notify("⚽ Começa o jogo!" + root.competitionSuffix(current), Model.matchLine(current), root.teamId)
 
     var scorers = []
     if (current.home.score > prev.hs) scorers.push(current.home)
@@ -285,6 +451,12 @@ Panel {
       return (first.id === root.teamId ? 1 : 0) - (second.id === root.teamId ? 1 : 0)
     })
     for (var index = 0; index < scorers.length; index++) root.onGoal(current, scorers[index])
+  }
+
+  // Names the competition when the match is not from the one on screen.
+  function competitionSuffix(matchNow) {
+    return matchNow && matchNow.league && matchNow.league !== root.league
+      ? " · " + Model.leagueName(matchNow.league) : ""
   }
 
   function notifyGoalOf(matchNow, team) {
@@ -301,7 +473,7 @@ Panel {
   // channel omarchy reminders ride. The cached crest PNG, once present,
   // becomes the toast icon.
   function notify(summary, body, iconTeamId) {
-    var args = ["notify-send", "-a", "Brasileirão", "-t", "8000"]
+    var args = ["notify-send", "-a", "Futebol BR", "-t", "8000"]
     var uri = root.crestUris[iconTeamId]
     if (uri) args.push("-i", uri.replace("file://", ""))
     args.push("--", summary, Model.notificationText(body))
@@ -374,7 +546,7 @@ Panel {
     if (!teamId) return
     if (root.crestUris[teamId] !== undefined) return
     if (root.crestHrefQueued[teamId]) return
-    if (Object.keys(root.crestHrefQueued).length >= 200) return
+    if (Object.keys(root.crestHrefQueued).length >= 400) return
     root.crestHrefQueued[teamId] = true
     root.crestQueue.push({ id: teamId })
     root.pumpCrests()
@@ -440,6 +612,14 @@ Panel {
     root.refreshScoreboard()
   }
 
+  // The followed club survives the switch: team IDs are shared across
+  // competitions and its other matches keep being tracked anyway.
+  function selectLeague(code) {
+    if (!Model.competitionOf(code) || code === root.league) return
+    root.writeSettings(function(e) { e.league = code })
+    root.searchText = ""
+  }
+
   function setSetting(name, value) {
     root.writeSettings(function(e) { e[name] = value })
   }
@@ -454,10 +634,11 @@ Panel {
   // ============================ BAR CHIP =============================
 
   function chipTooltip() {
-    if (!root.teamFollowed) return "Brasileirão · clique para escolher seu time"
+    if (!root.teamFollowed) return "Futebol BR · clique para escolher seu time"
     var m = root.match
-    if (!m) return "Brasileirão " + Model.leagueName(root.league) + " · seguindo " + (root.teamName || "seu time")
+    if (!m) return Model.leagueName(root.league) + " · seguindo " + (root.teamName || "seu time")
     return Model.matchLine(m) + " · " + (m.home.name + " × " + m.away.name)
+      + " · " + Model.leagueName(m.league || root.league)
   }
 
   function chipCenterText(matchNow) {
@@ -992,7 +1173,8 @@ Panel {
     target: "russio.football"
 
     function status(): string {
-      return JSON.stringify({ version: "1.0.5", league: root.league, team: root.teamId,
+      return JSON.stringify({ version: "1.1.0", league: root.league, team: root.teamId,
+        followedLeagues: root.followedLeagues, rosters: Object.keys(root.rosters).length,
         matches: root.todayMatches.length, standings: root.standings.length,
         cachedCrests: Object.keys(root.crestUris).length, queuedCrests: root.crestQueue.length,
         scoreboardError: root.scoreboardError, standingsError: root.standingsError,
@@ -1012,6 +1194,7 @@ Panel {
     function refresh(): void {
       root.refreshScoreboard()
       root.refreshStandings()
+      root.refreshRosters()
     }
     function celebrate(): void { root.testCelebrate("own") }
     function rivalGoal(): void { root.testCelebrate("rival") }
@@ -1086,7 +1269,7 @@ Panel {
                 textFormat: Text.PlainText
                 text: root.teamFollowed
                   ? (root.teamName || "Seu time")
-                  : "Brasileirão · " + Model.leagueName(root.league)
+                  : "Futebol BR · " + Model.leagueName(root.league)
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -1176,10 +1359,11 @@ Panel {
     if (!root.teamFollowed) return "Escolha o seu time nos ajustes"
     var m = root.match
     if (!m) return "Sem jogo hoje"
-    if (m.state === "pre") return "HOJE · " + Model.hhmm(m.date)
-    if (m.state === "halftime") return "INTERVALO"
-    if (m.state === "live") return "AO VIVO"
-    if (m.state === "post") return "FIM DE JOGO"
+    var where = root.competitionSuffix(m)
+    if (m.state === "pre") return "HOJE · " + Model.hhmm(m.date) + where
+    if (m.state === "halftime") return "INTERVALO" + where
+    if (m.state === "live") return "AO VIVO" + where
+    if (m.state === "post") return "FIM DE JOGO" + where
     return ""
   }
 
@@ -1201,18 +1385,43 @@ Panel {
     return root.foreground
   }
 
-  // ---- Team search across the standings roster.
-  function filteredStandings() {
-    var q = root.searchText.trim().toLowerCase()
-    if (!q) return root.standings
-    var out = []
-    for (var i = 0; i < root.standings.length; i++) {
-      var row = root.standings[i]
-      var name = String(row.name || "").toLowerCase()
-      var abbr = String(row.abbr || "").toLowerCase()
-      if (name.indexOf(q) >= 0 || abbr.indexOf(q) >= 0) out.push(row)
+  // ---- Team search. Browsing shows the selected competition (cups have no
+  //      table, so the /teams roster); typing searches every competition.
+  //      Once a club is followed the list stays folded until a search starts.
+  readonly property bool searching: root.searchText.trim() !== ""
+  readonly property bool pickerOpen: !root.teamFollowed || root.searching
+  readonly property var picker: Model.pickerTeams(root.rosters, root.league, root.standings,
+    root.searchText, 24)
+
+  function pickFirstTeam() {
+    if (!root.picker.teams.length) return
+    root.chooseTeam(root.picker.teams[0])
+  }
+
+  function chooseTeam(row) {
+    root.selectTeam(row.id, row.name)
+    root.searchText = ""
+    keyCatcher.forceActiveFocus()
+  }
+
+  function followedHint() {
+    if (root.teamLeagues.length)
+      return "Alertas em " + root.teamLeagues.map(Model.leagueName).join(" · ")
+    return root.rosterBusy ? "Verificando competições..." : "Alertas nas partidas do clube"
+  }
+
+  function pickerHint() {
+    var shown = root.picker.teams.length
+    var total = root.picker.total
+    if (root.searching) {
+      if (!total) return "Nenhum time para \"" + root.searchText.trim() + "\""
+      return total > shown ? "Mostrando " + shown + " de " + total + " · refine a busca" : ""
     }
-    return out
+    if (!total) return root.rosterBusy || standingsProc.running
+      ? "Carregando os times..." : "Times chegam com a próxima atualização."
+    return "Times da " + Model.leagueName(root.league)
+      + (total > shown ? " (" + shown + " de " + total + ")" : "")
+      + " · a busca inclui todas as competições"
   }
 
   // ============================== TABS ===============================
@@ -1289,6 +1498,17 @@ Panel {
               font.pixelSize: Style.font.caption
               font.bold: root.match && (root.match.state === "live" || root.match.state === "halftime")
             }
+            // The followed match may come from another competition.
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              visible: text !== ""
+              textFormat: Text.PlainText
+              text: root.match && root.match.league && root.match.league !== root.league
+                ? Model.leagueName(root.match.league) : ""
+              color: root.mutedColor
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
 
           Column {
@@ -1314,8 +1534,8 @@ Panel {
 
       PanelSectionHeader {
         text: root.todayMatches.length
-          ? "Rodada de hoje · " + Model.roundLabel(root.todayMatches)
-          : "Rodada de hoje"
+          ? Model.leagueName(root.league) + " hoje · " + Model.roundLabel(root.todayMatches)
+          : Model.leagueName(root.league) + " hoje"
         foreground: root.foreground
         fontFamily: root.fontFamily
       }
@@ -1429,8 +1649,8 @@ Panel {
       Text {
         visible: !root.todayMatches.length
         textFormat: Text.PlainText
-        text: scoreboardProc.running
-          ? "Buscando os jogos de hoje..." : "Sem jogos do Brasileirão hoje."
+        text: root.scoreboardBusy
+          ? "Buscando os jogos de hoje..." : "Sem jogos hoje nesta competição."
         color: root.mutedColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -1456,8 +1676,11 @@ Panel {
         { label: "SG", key: "gd", width: 34 }
       ]
 
+      readonly property var legend: Model.zoneLegend(root.league)
+
       PanelSectionHeader {
         text: "Classificação · " + Model.leagueName(root.league)
+          + (root.leagueFormat === "groups" ? " · fase de grupos" : "")
         foreground: root.foreground
         fontFamily: root.fontFamily
       }
@@ -1466,15 +1689,10 @@ Panel {
         width: parent.width
         columns: 2
         rowSpacing: Style.space(4)
-        visible: root.league === "bra.1"
+        visible: tabelaColumn.legend.length > 0
 
         Repeater {
-          model: [
-            { label: "1–4 Libertadores", zone: "libertadores" },
-            { label: "5 Pré-Libertadores", zone: "preLibertadores" },
-            { label: "6–11 Sul-Americana", zone: "sulAmericana" },
-            { label: "Últimos 4: rebaixamento", zone: "relegation" }
-          ]
+          model: tabelaColumn.legend
 
           Row {
             required property var modelData
@@ -1493,7 +1711,7 @@ Panel {
       }
 
       Text {
-        visible: root.league !== "bra.1"
+        visible: !tabelaColumn.legend.length && root.leagueFormat === "league"
         textFormat: Text.PlainText
         text: "Últimos 4: rebaixamento indicativo"
         color: root.urgentColor
@@ -1501,7 +1719,19 @@ Panel {
         font.pixelSize: Style.font.caption
       }
 
+      Text {
+        visible: root.leagueFormat === "knockout"
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: Model.leagueName(root.league) + " é mata-mata: não há tabela de classificação. Os jogos ficam na aba Jogos."
+        color: root.mutedColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
       Rectangle {
+        visible: root.leagueFormat !== "knockout"
         width: parent.width
         height: Style.space(26)
         radius: 4
@@ -1561,103 +1791,126 @@ Panel {
           Item {
             id: tableRow
             required property var modelData
-            required property int index
             readonly property bool followed: String(modelData.id) === root.teamId
-            readonly property string zone: Model.standingsZone(modelData.rank, root.standings.length, root.league)
+            readonly property string zone: Model.standingsZone(modelData.rank, modelData.groupSize, root.league)
             width: parent.width
-            height: Style.space(26)
+            // Cup groups open with their own subheader above the first row.
+            height: Style.space(26) + (modelData.groupStart ? groupLabel.height : 0)
 
-            Rectangle {
-              anchors.fill: parent
-              radius: 4
-              color: tableRow.followed
-                ? Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.12)
-                : (tableMouse.containsMouse
-                   ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
-                   : "transparent")
-            }
-
-            Rectangle {
-              width: parent.width
-              height: 1
-              anchors.bottom: parent.bottom
-              color: root.foreground
-              opacity: 0.07
-            }
-
-            MouseArea {
-              id: tableMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.selectTeam(modelData.id, modelData.name)
-            }
-
-            Rectangle {
-              width: 5
-              height: 5
-              radius: 2.5
+            Text {
+              id: groupLabel
+              visible: tableRow.modelData.groupStart
+              height: visible ? Style.space(24) : 0
               anchors.left: parent.left
               anchors.leftMargin: Style.space(4)
-              anchors.verticalCenter: parent.verticalCenter
-              color: root.zoneColors[tableRow.zone] || "transparent"
-            }
-
-            Text {
+              verticalAlignment: Text.AlignBottom
+              bottomPadding: Style.space(4)
               textFormat: Text.PlainText
-              text: String(tableRow.index + 1)
-              color: root.mutedColor
+              text: tableRow.modelData.group
+              color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
-              width: 14
-              horizontalAlignment: Text.AlignRight
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(12)
-              anchors.verticalCenter: parent.verticalCenter
+              font.bold: true
+              font.letterSpacing: 1.2
             }
 
-            Crest {
-              size: 13
-              teamId: modelData.id
-              abbr: modelData.abbr
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(34)
-              anchors.verticalCenter: parent.verticalCenter
-            }
+            Item {
+              width: parent.width
+              height: Style.space(26)
+              anchors.bottom: parent.bottom
 
-            Text {
-              textFormat: Text.PlainText
-              text: modelData.name
-              color: tableRow.followed ? root.accentColor : root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: tableRow.followed
-              elide: Text.ElideRight
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(54)
-              anchors.right: statValues.left
-              anchors.rightMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-            }
+              Rectangle {
+                anchors.fill: parent
+                radius: 4
+                color: tableRow.followed
+                  ? Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.12)
+                  : (tableMouse.containsMouse
+                     ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04)
+                     : "transparent")
+              }
 
-            Row {
-              id: statValues
-              width: tabelaColumn.statsWidth
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(6)
-              anchors.verticalCenter: parent.verticalCenter
-              Repeater {
-                model: tabelaColumn.statColumns
-                Text {
-                  required property var modelData
-                  width: Style.space(modelData.width)
-                  textFormat: Text.PlainText
-                  text: (modelData.key === "gd" && tableRow.modelData.gd > 0 ? "+" : "") + tableRow.modelData[modelData.key]
-                  color: tableRow.followed ? root.accentColor : root.mutedColor
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: modelData.key === "points"
-                  horizontalAlignment: Text.AlignRight
+              Rectangle {
+                width: parent.width
+                height: 1
+                anchors.bottom: parent.bottom
+                color: root.foreground
+                opacity: 0.07
+              }
+
+              MouseArea {
+                id: tableMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.selectTeam(modelData.id, modelData.name)
+              }
+
+              Rectangle {
+                width: 5
+                height: 5
+                radius: 2.5
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(4)
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.zoneColors[tableRow.zone] || "transparent"
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: String(tableRow.modelData.rank)
+                color: root.mutedColor
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                width: 14
+                horizontalAlignment: Text.AlignRight
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Crest {
+                size: 13
+                teamId: modelData.id
+                abbr: modelData.abbr
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(34)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: modelData.name
+                color: tableRow.followed ? root.accentColor : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: tableRow.followed
+                elide: Text.ElideRight
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(54)
+                anchors.right: statValues.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Row {
+                id: statValues
+                width: tabelaColumn.statsWidth
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                Repeater {
+                  model: tabelaColumn.statColumns
+                  Text {
+                    required property var modelData
+                    width: Style.space(modelData.width)
+                    textFormat: Text.PlainText
+                    text: (modelData.key === "gd" && tableRow.modelData.gd > 0 ? "+" : "") + tableRow.modelData[modelData.key]
+                    color: tableRow.followed ? root.accentColor : root.mutedColor
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: modelData.key === "points"
+                    horizontalAlignment: Text.AlignRight
+                  }
                 }
               }
             }
@@ -1666,7 +1919,7 @@ Panel {
       }
 
       Text {
-        visible: !root.standings.length
+        visible: !root.standings.length && root.leagueFormat !== "knockout"
         textFormat: Text.PlainText
         text: standingsProc.running ? "Carregando a tabela..." : "A tabela chega com a próxima atualização."
         color: root.mutedColor
@@ -1676,7 +1929,8 @@ Panel {
     }
   }
 
-  // ---- AJUSTES: team picker with search + experience toggles.
+  // ---- AJUSTES: followed club first (search spans every competition),
+  //      then what Jogos/Tabela show, then the alert toggles.
   Component {
     id: ajustesComponent
 
@@ -1685,62 +1939,101 @@ Panel {
       width: parent.width
       spacing: Style.space(10)
 
+      // Clears the field whenever the search resets elsewhere (team picked,
+      // competition switched).
+      Connections {
+        target: root
+        function onSearchTextChanged() {
+          if (searchInput.text !== root.searchText) searchInput.text = root.searchText
+        }
+      }
+
       PanelSectionHeader {
         text: "Seu time"
         foreground: root.foreground
         fontFamily: root.fontFamily
       }
 
-      // Current selection line, or a nudge when nobody is followed.
+      // Followed club: crest, name and the competitions it is tracked in.
       Item {
         width: parent.width
-        height: root.teamFollowed ? 24 : 0
+        height: root.teamFollowed ? Math.max(followedCrest.height, followedText.implicitHeight) : 0
         visible: root.teamFollowed
 
-        Row {
+        Crest {
+          id: followedCrest
+          size: 26
+          teamId: root.teamId
+          abbr: root.teamName.slice(0, 3).toUpperCase()
+          anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(7)
+        }
 
-          Crest {
-            size: 16
-            teamId: root.teamId
-            abbr: root.teamName.slice(0, 3).toUpperCase()
-            anchors.verticalCenter: parent.verticalCenter
-          }
+        Column {
+          id: followedText
+          anchors.left: followedCrest.right
+          anchors.leftMargin: Style.space(10)
+          anchors.right: unfollowLabel.left
+          anchors.rightMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: 2
 
           Text {
+            width: parent.width
+            elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: "Seguindo " + (root.teamName || "seu time")
+            text: root.teamName || "Seu time"
             color: root.accentColor
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             font.bold: true
-            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: root.followedHint()
+            color: root.mutedColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
 
         Text {
+          id: unfollowLabel
           textFormat: Text.PlainText
-          text: "✕"
-          color: root.mutedColor
+          text: "Deixar de seguir"
+          color: unfollowMouse.containsMouse ? root.foreground : root.mutedColor
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
+          font.underline: unfollowMouse.containsMouse
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
 
           MouseArea {
-            id: clearTeamMouse
+            id: unfollowMouse
             anchors.fill: parent
+            anchors.margins: -Style.space(4)
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.clearTeam()
           }
-
-          opacity: clearTeamMouse.containsMouse ? 1.0 : 0.8
         }
       }
 
-      // Search field — filters the roster by name or abbreviation.
+      Text {
+        visible: !root.teamFollowed
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: "Siga um clube para receber alertas de gol em todas as competições que ele disputa."
+        color: root.mutedColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
+      // Search field: Enter follows the first result, Esc clears, then closes.
       Rectangle {
         width: parent.width
         height: 30
@@ -1752,12 +2045,14 @@ Panel {
         border.width: 1
 
         Text {
-          id: searchPlaceholder
-          visible: searchInput.text === "" && !searchInput.activeFocus
+          visible: searchInput.text === ""
           anchors.left: parent.left
           anchors.leftMargin: Style.space(12)
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(12)
           anchors.verticalCenter: parent.verticalCenter
-          text: "Buscar time..."
+          elide: Text.ElideRight
+          text: root.teamFollowed ? "Trocar de time..." : "Buscar time em qualquer competição..."
           color: Qt.darker(root.foreground, 1.6)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1768,7 +2063,7 @@ Panel {
           id: searchInput
           anchors.fill: parent
           anchors.leftMargin: Style.space(12)
-          anchors.rightMargin: Style.space(12)
+          anchors.rightMargin: Style.space(30)
           verticalAlignment: TextInput.AlignVCenter
           color: root.foreground
           font.family: root.fontFamily
@@ -1776,31 +2071,74 @@ Panel {
           clip: true
           onTextChanged: root.searchText = text
           onActiveFocusChanged: root.searchFocused = activeFocus
-          Keys.onEscapePressed: root.close()
+          onAccepted: root.pickFirstTeam()
+          Keys.onEscapePressed: {
+            if (text !== "") text = ""
+            else root.close()
+          }
           Component.onDestruction: root.searchFocused = false
+        }
+
+        Text {
+          visible: searchInput.text !== ""
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: "✕"
+          color: clearSearchMouse.containsMouse ? root.foreground : root.mutedColor
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+
+          MouseArea {
+            id: clearSearchMouse
+            anchors.fill: parent
+            anchors.margins: -Style.space(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: searchInput.text = ""
+          }
         }
       }
 
+      Text {
+        visible: root.pickerOpen && text !== ""
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: root.pickerHint()
+        color: root.mutedColor
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
       Flow {
+        visible: root.pickerOpen
         width: parent.width
         spacing: Style.space(6)
 
         Repeater {
-          model: root.filteredStandings()
+          model: root.pickerOpen ? root.picker.teams : []
 
           Rectangle {
             id: pickerChip
             required property var modelData
-            readonly property bool following: String(modelData.id) === root.teamId
+            required property int index
+            readonly property bool following: modelData.id === root.teamId
+            // Enter follows the first chip, so it carries the hover look.
+            readonly property bool primary: root.searching && index === 0
+            // Roster crests download only once the picker shows them.
+            Component.onCompleted: root.queueCrest(modelData.id)
             width: pickerRow.implicitWidth + Style.space(14)
             height: 25
             radius: 12.5
-            color: pickerMouse.containsMouse
+            color: pickerMouse.containsMouse || pickerChip.primary
               ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
               : "transparent"
             border.color: pickerChip.following
               ? root.accentColor
-              : (pickerMouse.containsMouse ? Qt.darker(root.foreground, 1.3) : "transparent")
+              : (pickerMouse.containsMouse || pickerChip.primary
+                 ? Qt.darker(root.foreground, 1.3) : "transparent")
             border.width: pickerChip.following ? 1.4 : 1
 
             MouseArea {
@@ -1808,11 +2146,7 @@ Panel {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: {
-                root.selectTeam(modelData.id, modelData.name)
-                root.searchText = ""
-                searchInput.text = ""
-              }
+              onClicked: root.chooseTeam(pickerChip.modelData)
             }
 
             Row {
@@ -1822,14 +2156,14 @@ Panel {
 
               Crest {
                 size: 13
-                teamId: modelData.id
-                abbr: modelData.abbr
+                teamId: pickerChip.modelData.id
+                abbr: pickerChip.modelData.abbr
                 anchors.verticalCenter: parent.verticalCenter
               }
 
               Text {
                 textFormat: Text.PlainText
-                text: modelData.name
+                text: pickerChip.modelData.name
                 color: pickerChip.following ? root.accentColor : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -1841,19 +2175,72 @@ Panel {
         }
       }
 
+      PanelSectionHeader {
+        text: "Competição exibida"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+      }
+
       Text {
-        visible: !root.filteredStandings().length
+        width: parent.width
+        wrapMode: Text.WordWrap
         textFormat: Text.PlainText
-        text: root.standings.length
-          ? "Nenhum time para \"" + root.searchText + "\""
-          : (standingsProc.running ? "Carregando os times..." : "Times chegam com a próxima atualização.")
+        text: root.teamFollowed
+          ? "Muda o que aparece em Jogos e Tabela. Os alertas do seu time continuam em todas."
+          : "Muda o que aparece em Jogos e Tabela."
         color: root.mutedColor
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
       }
 
+      Flow {
+        width: parent.width
+        spacing: Style.space(6)
+
+        Repeater {
+          model: Model.competitions()
+
+          Rectangle {
+            id: leagueChip
+            required property var modelData
+            readonly property bool selected: modelData.code === root.league
+            width: leagueLabel.implicitWidth + Style.space(18)
+            height: 25
+            radius: 12.5
+            color: leagueMouse.containsMouse
+              ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.08)
+              : "transparent"
+            border.color: leagueChip.selected
+              ? root.accentColor
+              : (leagueMouse.containsMouse
+                 ? Qt.darker(root.foreground, 1.3)
+                 : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.15))
+            border.width: leagueChip.selected ? 1.4 : 1
+
+            Text {
+              id: leagueLabel
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: leagueChip.modelData.name
+              color: leagueChip.selected ? root.accentColor : root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: leagueChip.selected
+            }
+
+            MouseArea {
+              id: leagueMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.selectLeague(leagueChip.modelData.code)
+            }
+          }
+        }
+      }
+
       PanelSectionHeader {
-        text: "Experiência"
+        text: "Alertas"
         foreground: root.foreground
         fontFamily: root.fontFamily
       }
@@ -1876,7 +2263,9 @@ Panel {
         onToggled2: root.setSetting("rivalAlert", !root.rivalAlert)
       }
 
+      // Previews need a followed club to dress the overlay.
       Row {
+        visible: root.teamFollowed
         spacing: Style.space(18)
 
         Text {
@@ -1925,6 +2314,8 @@ Panel {
       }
 
       Text {
+        width: parent.width
+        wrapMode: Text.WordWrap
         textFormat: Text.PlainText
         text: root.scoreboardError || root.standingsError
           ? "ESPN indisponível · mantendo os últimos dados válidos"
